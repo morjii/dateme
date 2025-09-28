@@ -6,8 +6,8 @@ module.exports = [
     config: {
       enabled: true,
       origin: [
-        'http://localhost:3000',      
-        'https://mydate.app', 
+        'http://localhost:3000',
+        'https://mydate.app',
       ],
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       headers: '*',
@@ -17,7 +17,15 @@ module.exports = [
   'strapi::poweredBy',
   'strapi::logger',
   'strapi::query',
-  'strapi::body',
+  {
+    name: 'strapi::body',
+    config: {
+      jsonLimit: '10mb',
+      formLimit: '10mb',
+      textLimit: '10mb',
+      includeUnparsed: true, // ⚠️ permet d’accéder à raw body
+    },
+  },
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
