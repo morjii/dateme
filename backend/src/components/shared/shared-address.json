@@ -1,0 +1,29 @@
+{
+  "collectionName": "components_shared_shared_addresses",
+  "info": {
+    "displayName": "shared.address"
+  },
+  "options": {},
+  "attributes": {
+    "line1": {
+      "type": "string",
+      "required": true
+    },
+    "line2": {
+      "type": "string"
+    },
+    "city": {
+      "type": "string",
+      "required": true
+    },
+    "zip": {
+      "type": "string",
+      "required": true
+    },
+    "country": {
+      "type": "string",
+      "required": true
+    }
+  },
+  "config": {}
+}
