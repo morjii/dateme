@@ -1,22 +1,27 @@
+// app/products/[slug]/page.tsx
 import { fetchAPI, formatPrice, mediaUrl } from "@/lib/api";
 import type { Product, Variant } from "@/types/product";
+import AddToCart from "@/components/AddToCart";
 
+/** Normalise un produit Strapi (flat ou attributes) vers notre type Product */
 function normalizeProduct(p: any): Product {
   const obj = p?.attributes ?? p ?? {};
 
+  // images : supporte {data:[{attributes:{url}}]} ou [{url}]
   const imagesArray =
     Array.isArray(obj.images?.data)
       ? obj.images.data.map((i: any) => i?.attributes ?? i).filter(Boolean)
       : Array.isArray(obj.images)
-      ? obj.images
-      : [];
+        ? obj.images
+        : [];
 
+  // variants : supporte {data:[{attributes:{...}}]} ou [{...}]
   const variantsArray: Variant[] =
     Array.isArray(obj.variants?.data)
       ? obj.variants.data.map((v: any) => v?.attributes ?? v).filter(Boolean)
       : Array.isArray(obj.variants)
-      ? obj.variants
-      : [];
+        ? obj.variants
+        : [];
 
   return {
     id: p?.id,
@@ -30,9 +35,16 @@ function normalizeProduct(p: any): Product {
   };
 }
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
+/** Page produit — Next.js 15 : params est asynchrone, il faut l'await */
+export default async function ProductPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+
   const { data } = await fetchAPI(
-    `/products?filters[slug][$eq]=${params.slug}&populate=*`
+    `/products?filters[slug][$eq]=${slug}&populate=*`
   );
 
   if (!Array.isArray(data) || data.length === 0) {
@@ -42,7 +54,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
         <p className="text-gray-600 mt-2">Vérifiez l’URL ou retournez à l’accueil.</p>
       </main>
     );
-  }
+    }
 
   const product = normalizeProduct(data[0]);
   const src = mediaUrl(product.image);
@@ -55,11 +67,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
           <div className="aspect-square bg-gray-100">
             {src ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={src}
-                alt={product.alt}
-                className="h-full w-full object-cover"
-              />
+              <img src={src} alt={product.alt} className="h-full w-full object-cover" />
             ) : (
               <div className="h-full w-full flex items-center justify-center text-gray-400">
                 aucune image
@@ -92,11 +100,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
                     </span>
                     <span className="text-gray-600">Couleur: {v.color || "—"}</span>
                     <span className="text-gray-600">SKU: {v.sku || "—"}</span>
-                    <span
-                      className={`ml-auto ${
-                        !v.stock ? "text-red-600" : "text-gray-700"
-                      }`}
-                    >
+                    <span className={`ml-auto ${!v.stock ? "text-red-600" : "text-gray-700"}`}>
                       Stock: {typeof v.stock === "number" ? v.stock : "—"}
                     </span>
                   </li>
@@ -106,12 +110,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
           </div>
 
           <div className="mt-6">
-            <button
-              className="w-full md:w-auto rounded-lg bg-black text-white px-4 py-2 disabled:opacity-50"
-              disabled={product.variants.every((v) => (v.stock ?? 0) <= 0)}
-            >
-              Ajouter au panier (bientôt)
-            </button>
+            <AddToCart product={product} />
           </div>
         </div>
       </div>
