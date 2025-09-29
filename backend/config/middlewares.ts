@@ -23,7 +23,7 @@ module.exports = [
       jsonLimit: '10mb',
       formLimit: '10mb',
       textLimit: '10mb',
-      includeUnparsed: true, // ⚠️ permet d’accéder à raw body
+      includeUnparsed: true, // access raw body
     },
   },
   'strapi::session',
