@@ -3,17 +3,14 @@
 
 import Stripe from 'stripe';
 
-// ⚠️ Ne force pas apiVersion si ton SDK en impose une plus récente via les types.
-// const stripe = new Stripe(process.env.STRIPE_SECRET as string, { apiVersion: '2025-08-27.basil' });
 const stripe = new Stripe(process.env.STRIPE_SECRET as string);
 
-/** Types locaux pour la complétion et lever les warnings */
+/** Types locaux */
 type ProductVariant = {
   size: 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
   stock: number;
   color?: string;
   sku?: string;
-  // Pour tolérer d'autres props éventuelles du component
   [key: string]: any;
 };
 
@@ -34,6 +31,7 @@ type OrderItem = {
   total: number;     // cents
 };
 
+/** Mappe les line_items Stripe → OrderItem */
 function mapLineItemsToOrderItems(lineItems: Stripe.ApiList<Stripe.LineItem>): OrderItem[] {
   if (!lineItems || !Array.isArray(lineItems.data) || lineItems.data.length === 0) return [];
   return lineItems.data.map((li) => {
@@ -55,6 +53,7 @@ function mapLineItemsToOrderItems(lineItems: Stripe.ApiList<Stripe.LineItem>): O
   });
 }
 
+/** Idempotence : évite les doublons */
 async function orderExistsForSession(sessionId: string): Promise<boolean> {
   const found = await strapi.entityService.findMany('api::order.order', {
     filters: { stripeCheckoutSessionId: sessionId },
@@ -64,6 +63,7 @@ async function orderExistsForSession(sessionId: string): Promise<boolean> {
   return Array.isArray(found) && found.length > 0;
 }
 
+/** Décrémente le stock d'une variante (par SKU) */
 async function decrementVariantStock(productId: number, variantSku: string, qty: number) {
   if (!productId || !variantSku || !qty) return;
 
@@ -73,27 +73,38 @@ async function decrementVariantStock(productId: number, variantSku: string, qty:
       populate: { variants: true },
     })) as unknown as ProductWithVariants;
 
-    if (!product || !Array.isArray(product.variants)) return;
+    if (!product || !Array.isArray(product.variants)) {
+      strapi.log.warn(`⚠️ Produit ${productId} introuvable ou sans variants.`);
+      return;
+    }
+
+    const skuList = product.variants.map(v => v?.sku).filter(Boolean);
+    strapi.log.info(`🔎 Product #${productId} « ${product.title ?? ''} » — SKUs: ${JSON.stringify(skuList)}`);
 
     let changed = false;
     const newVariants: ProductVariant[] = product.variants.map((v) => {
       if (v?.sku === variantSku) {
-        const newStock = Math.max(0, Number(v.stock ?? 0) - Number(qty));
+        const before = Number(v.stock ?? 0);
+        const after = Math.max(0, before - Number(qty));
+        strapi.log.info(`↘️ Décrément ${variantSku}: ${before} → ${after} (−${qty})`);
         changed = true;
-        return { ...v, stock: newStock };
+        return { ...v, stock: after };
       }
       return v;
     });
 
-    if (changed) {
-      // Cast soft car les types Strapi générés sont plus stricts que nos types locaux
-      await strapi.entityService.update('api::product.product', productId, {
-        data: { variants: newVariants as unknown as any[] },
-      });
-      strapi.log.info(`↘️ Stock décrémenté pour ${product.title ?? productId} (sku:${variantSku}) de ${qty}`);
+    if (!changed) {
+      strapi.log.warn(`⚠️ SKU ${variantSku} non trouvé dans le produit #${productId}.`);
+      return;
     }
+
+    await strapi.entityService.update('api::product.product', productId, {
+      // cast souple : types Strapi générés parfois plus stricts
+      data: { variants: newVariants as unknown as any[] },
+    });
+    strapi.log.info(`✅ Stock mis à jour pour ${product.title ?? productId} (sku:${variantSku}).`);
   } catch (e: any) {
-    strapi.log.warn(`⚠️ Impossible de décrémenter le stock (p:${productId}/sku:${variantSku}) : ${e?.message ?? e}`);
+    strapi.log.warn(`⚠️ Impossible de décrémenter (p:${productId}/sku:${variantSku}) : ${e?.message ?? e}`);
   }
 }
 
@@ -134,7 +145,7 @@ export default {
         return;
       }
 
-      // Line items
+      // Charge les line items Stripe → map
       let items: OrderItem[] = [];
       try {
         const lineItems = await stripe.checkout.sessions.listLineItems(sessionId, { limit: 100 });
@@ -144,25 +155,36 @@ export default {
         strapi.log.warn(`⚠️ Impossible de charger line items pour ${sessionId}: ${e?.message ?? e}`);
       }
 
-      // Fallback si items requis dans Strapi
-      if (!items || items.length === 0) {
+      // ❌ Pas de fallback forcé en prod :
+      // - si pas d'items exploitables (pas de metadata), on NE crée PAS d'order.
+      // - pour tester localement, définir FORCE_TEST_ITEM=1 dans .env (non committé).
+      if ((!items || items.length === 0 || items.every(it => !it.productId || !it.variantSku))
+          && process.env.FORCE_TEST_ITEM === '1') {
+        // ⚠️ Mode test local uniquement (mettre vos valeurs locales ici si besoin)
         items = [{
-          productId: 0,
-          productSlug: 'placeholder',
-          title: 'Article (test)',
-          variantSku: '',
-          variantLabel: '',
-          unitPrice: 100,
+          productId: 1,
+          productSlug: 'robe-test',
+          title: 'robe test',
+          variantSku: 'TEST-WHITE-S',
+          variantLabel: 'White / S',
+          unitPrice: 4900,
           qty: 1,
-          total: 100,
+          total: 4900,
         }];
-        strapi.log.info('ℹ️ Items vides → ajout d’un fallback.');
+        strapi.log.info('ℹ️ [TEST] Items forcés via FORCE_TEST_ITEM=1.');
+      }
+
+      if (!items || items.length === 0 || items.every(it => !it.productId || !it.variantSku)) {
+        strapi.log.warn('⚠️ Aucun item exploitable (metadata absentes). Order non créé.');
+        ctx.status = 200;
+        ctx.body = { skipped: true };
+        return;
       }
 
       const shippingFee = Number(session.total_details?.amount_shipping || 0);
       const discount = Number(session.total_details?.amount_discount || 0);
 
-      // Création Order (subtotal/total init à 0 → recalculés par ton lifecycle)
+      // Création Order (subtotal/total init à 0 → recalculés par lifecycle)
       const order = await strapi.entityService.create('api::order.order', {
         data: {
           orderStatus: 'paid',
