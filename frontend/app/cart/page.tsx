@@ -1,12 +1,51 @@
 'use client';
+import { useState } from 'react';
 import { useCart } from '@/lib/cart-store';
 import { formatPrice } from '@/lib/api';
+import type { CartItem } from '@/types/cart';
 
 export default function CartPage() {
   const items = useCart((s) => s.items);
   const removeItem = useCart((s) => s.removeItem);
   const updateQty = useCart((s) => s.updateQty);
   const subtotal = useCart((s) => s.subtotal)();
+
+  const [loading, setLoading] = useState(false);
+
+  const handleCheckout = async () => {
+    try {
+      setLoading(true);
+
+      // S'assure qu'on envoie exactement { items: CartItem[] } à l'API
+      const payload: { items: CartItem[] } = {
+        items: items.map((it) => ({
+          productId: it.productId,
+          productSlug: it.productSlug,
+          title: it.title,
+          variantSku: it.variantSku,
+          variantLabel: it.variantLabel,
+          unitPrice: it.unitPrice, // centimes
+          qty: it.qty,
+        })),
+      };
+
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Checkout failed');
+
+      // Redirection vers la page Stripe Checkout
+      window.location.href = data.url;
+    } catch (e: any) {
+      alert(e.message || 'Erreur lors du paiement');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="max-w-4xl mx-auto p-6">
@@ -27,19 +66,26 @@ export default function CartPage() {
               <div className="flex items-center gap-2">
                 <button
                   className="px-2 py-1 border rounded"
-                  onClick={() => updateQty(it.productId, it.variantSku, it.qty - 1)}
-                >−</button>
+                  onClick={() => updateQty(it.productId, it.variantSku, Math.max(1, it.qty - 1))}
+                >
+                  −
+                </button>
                 <input
                   type="number"
                   min={1}
                   className="w-16 border rounded px-2 py-1 text-center"
                   value={it.qty}
-                  onChange={(e) => updateQty(it.productId, it.variantSku, Math.max(1, Number(e.target.value || 1)))}
+                  onChange={(e) => {
+                    const v = Number(e.target.value || 1);
+                    updateQty(it.productId, it.variantSku, Math.max(1, v));
+                  }}
                 />
                 <button
                   className="px-2 py-1 border rounded"
                   onClick={() => updateQty(it.productId, it.variantSku, it.qty + 1)}
-                >+</button>
+                >
+                  +
+                </button>
               </div>
 
               <div className="w-24 text-right font-semibold">{formatPrice(it.unitPrice * it.qty)}</div>
@@ -58,12 +104,13 @@ export default function CartPage() {
           </div>
 
           <div className="flex justify-end">
-            <a
-              href="/checkout" // (bientôt) ou bouton qui déclenchera la route /api/checkout
-              className="rounded-lg bg-black text-white px-4 py-2"
+            <button
+              onClick={handleCheckout}
+              disabled={loading}
+              className="rounded-lg bg-black text-white px-4 py-2 disabled:opacity-60"
             >
-              Commander
-            </a>
+              {loading ? 'Redirection…' : 'Commander'}
+            </button>
           </div>
         </div>
       )}
