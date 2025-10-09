@@ -4,62 +4,31 @@
   "info": {
     "singularName": "order",
     "pluralName": "orders",
-    "displayName": "Order"
+    "displayName": "Order",
+    "description": "E-commerce order"
   },
-  "options": {
-    "draftAndPublish": true
-  },
-  "pluginOptions": {},
+  "options": { "draftAndPublish": false },
   "attributes": {
     "orderStatus": {
       "type": "enumeration",
-      "enum": [
-        "pending",
-        "paid",
-        "cancelled",
-        "refunded"
-      ]
-    },
-    "email": {
-      "type": "email",
+      "enum": ["pending", "paid", "cancelled", "refunded"],
+      "default": "paid",
       "required": true
     },
+    "email": { "type": "email" },
     "items": {
       "type": "component",
-      "component": "order.order-order-item",
+      "component": "order.order-item",
       "repeatable": true,
       "required": true
     },
-    "subtotal": {
-      "type": "integer",
-      "required": true
-    },
-    "discount": {
-      "type": "integer",
-      "required": true,
-      "default": 0
-    },
-    "shippingFee": {
-      "type": "integer",
-      "required": true,
-      "default": 0
-    },
-    "total": {
-      "type": "integer",
-      "required": true
-    },
-    "notes": {
-      "type": "text"
-    },
-    "stripeCheckoutSessionId": {
-      "type": "string",
-      "required": false,
-      "unique": true
-    },
-    "stripePaymentIntentId": {
-      "type": "string",
-      "unique": true
-    },
+    "subtotal": { "type": "integer", "default": 0 },
+    "discount": { "type": "integer", "default": 0 },
+    "shippingFee": { "type": "integer", "default": 0 },
+    "total": { "type": "integer", "default": 0 },
+    "notes": { "type": "text" },
+    "stripeCheckoutSessionId": { "type": "string", "unique": true },
+    "stripePaymentIntentId": { "type": "string", "unique": true },
     "shippingAddress": {
       "type": "component",
       "component": "shared.shared-address",
